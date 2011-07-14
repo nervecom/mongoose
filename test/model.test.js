@@ -114,6 +114,8 @@ module.exports = {
 
     var post = new BlogPost();
     post.isNew.should.be.true;
+    post.db.model('BlogPost').modelName.should.equal('BlogPost');
+    post.constructor.modelName.should.equal('BlogPost');
 
     post.get('_id').should.be.an.instanceof(DocumentObjectId);
 
@@ -1186,8 +1188,6 @@ module.exports = {
   },
 
   'test "type" is allowed as a key': function(){
-    var now = Date.now();
-
     mongoose.model('TestTypeDefaults', new Schema({
         type: { type: String, default: 'YES!' }
     }));
@@ -1198,7 +1198,20 @@ module.exports = {
     var post = new TestDefaults();
     post.get('type').should.be.a('string');
     post.get('type').should.eql('YES!');
-    db.close();
+
+    // GH-402
+    var TestDefaults2 = db.model('TestTypeDefaults2', new Schema({
+        x: { y: { type: { type: String }, owner: String } }
+    }));
+
+    var post = new TestDefaults2;
+    post.x.y.type = "#402";
+    post.x.y.owner= "me";
+    post.save(function (err) {
+      db.close();
+      should.strictEqual(null, err);
+    });
+
   },
 
   'test nested defaults application': function(){
@@ -1503,6 +1516,7 @@ module.exports = {
     var post = new BlogPost();
     post.set('title', title);
     post.author = author;
+    post.meta.visitors = 0;
 
     post.save(function (err) {
       should.strictEqual(err, null);
@@ -1510,14 +1524,30 @@ module.exports = {
         should.strictEqual(err, null);
         createdFound.title.should.equal(title);
         createdFound.author.should.equal(author);
+        createdFound.meta.visitors.valueOf().should.eql(0);
+
         BlogPost.update({ title: title }, { title: newTitle }, function (err) {
           should.strictEqual(err, null);
 
           BlogPost.findById(post._id, function (err, updatedFound) {
-            db.close();
             should.strictEqual(err, null);
             updatedFound.title.should.equal(newTitle);
             updatedFound.author.should.equal(author);
+            updatedFound.meta.visitors.valueOf().should.equal(0);
+
+            // Note: use BlogPost.collection.update for anything other than set operations
+            BlogPost.update({ _id: post._id }, { $inc: { 'meta.visitors': 1 } }, function (err) {
+              if (err) db.close();
+              should.strictEqual(!!err, false, "Model.update doesn't work with $inc");
+
+              BlogPost.findById(post._id, function (err, updatedFound) {
+                db.close();
+                should.strictEqual(err, null);
+                updatedFound.meta.visitors.valueOf().should.equal(1);
+                updatedFound.title.should.equal(newTitle);
+                updatedFound.author.should.equal(author);
+              });
+            });
           });
         });
       });
@@ -3708,6 +3738,24 @@ module.exports = {
     e.save();
   },
 
+  'ensureIndex error should emit on the db': function () {
+    var db = start();
+
+    db.on('error', function (err) {
+      /^E11000 duplicate key error index:/.test(err.message).should.equal(true);
+      db.close();
+    });
+
+    var schema = new Schema({ name: { type: String } })
+      , Test = db.model('IndexError', schema, "x"+random());
+
+    Test.create({ name: 'hi' }, { name: 'hi' }, function (err) {
+      should.strictEqual(err, null);
+      Test.schema.index({ name: 1 }, { unique: true });
+      Test.init();
+    });
+  },
+
   'backward compatibility with conflicted data in the db': function () {
     var db = start();
     var M = db.model('backwardDataConflict', new Schema({ namey: { first: String, last: String }}));
@@ -3719,6 +3767,42 @@ module.exports = {
       should.strictEqual('GI', m.namey.first);
       should.strictEqual('Joe', m.namey.last);
     });
+  },
+
+  '#push should work on EmbeddedDocuments more than 2 levels deep': function () {
+    var db = start()
+      , Post = db.model('BlogPost', collection)
+      , Comment = db.model('CommentNesting', Comments, collection);
+
+    var p =new Post({ title: "comment nesting" });
+    var c1 =new Comment({ title: "c1" });
+    var c2 =new Comment({ title: "c2" });
+    var c3 =new Comment({ title: "c3" });
+
+    p.comments.push(c1);
+    c1.comments.push(c2);
+    c2.comments.push(c3);
+
+    p.save(function (err) {
+      should.strictEqual(err, null);
+
+      Post.findById(p._id, function (err, p) {
+        should.strictEqual(err, null);
+
+        var c4=new Comment({ title: "c4" });
+        p.comments[0].comments[0].comments[0].comments.push(c4);
+        p.save(function (err) {
+          should.strictEqual(err, null);
+
+          Post.findById(p._id, function (err, p) {
+            db.close();
+            should.strictEqual(err, null);
+            p.comments[0].comments[0].comments[0].comments[0].title.should.equal('c4');
+          });
+        });
+      });
+    })
+
   }
 
 };

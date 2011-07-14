@@ -1,4 +1,36 @@
 
+
+1.7.2 / 2011-07-13
+===================
+
+  * changed; node-mongodb-native driver to v0.9.6.7
+
+1.7.1 / 2011-07-12
+===================
+
+  * changed; roll back node-mongodb-native driver to v0.9.6.4
+
+1.7.0 / 2011-07-12
+===================
+
+  * fixed; collection name misspelling [mathrawka]
+  * fixed; 2nd param is required for ReplSetServers [kevinmarvin]
+  * fixed; MongooseArray behaves properly with Object.keys
+  * changed; node-mongodb-native driver to v0.9.6.6
+  * fixed/changed; Mongodb segfault when passed invalid ObjectId (#407)
+      - This means invalid data passed to the ObjectId constructor will now error
+
+1.6.0 / 2011-07-07
+===================
+
+  * changed; .save() errors are now emitted on the instances db instead of the instance 9782463fc
+  * fixed; errors occurring when creating indexes now properly emit on db
+  * added; $maxDistance support to MongooseArrays
+  * fixed; RegExps now work with $all
+  * changed; node-mongodb-native driver to v0.9.6.4
+  * fixed; model names are now accessible via .modelName
+  * added; Query#slaveOk support
+
 1.5.0 / 2011-06-27
 ===================
 
